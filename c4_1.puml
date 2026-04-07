@@ -1,0 +1,41 @@
+@startuml
+!includeurl https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+
+Person(ext, "Внешняя банковская система")
+Person(ops, "Поддержка / SRE")
+System_Ext(providers, "Внешние провайдеры доставки")
+
+System_Boundary(sys, "Подсистема гарантированной доставки (state machine в БД)") {
+  Container(api, "Сервис приема уведомлений", "HTTP / gRPC", "Принимает критичные уведомления")
+  Container(cache, "Кэш идемпотентности", "Redis", "Проверяет повторные запросы")
+  ContainerDb(db, "База данных доставки", "PostgreSQL", "Хранит уведомления, попытки доставки и состояния")
+  Container(worker, "Воркер оркестрации", "Backend Worker", "Читает состояния и запускает доставку")
+  Container(scanner, "Воркер таймаутов", "Backend Worker", "Проверяет просроченные попытки и запускает failover")
+  Container(pref, "Сервис пользовательских настроек", "Internal Service", "Возвращает предпочтительный канал и доступные контакты")
+  Container(push, "Адаптер push", "Worker", "Отправляет push-уведомления")
+  Container(email, "Адаптер email", "Worker", "Отправляет email-уведомления")
+  Container(sms, "Адаптер SMS", "Worker", "Отправляет SMS-уведомления")
+  Container(webhook, "Сервис приема статусов доставки", "HTTP API", "Принимает ответы от внешних провайдеров")
+  Container(obs, "Мониторинг и логи", "Observability", "Метрики, логи, алерты")
+}
+
+Rel(ext, api, "Передает критичное уведомление")
+Rel(api, cache, "Проверяет, не обрабатывалось ли уведомление ранее")
+Rel(api, db, "Сохраняет новое уведомление")
+Rel(worker, db, "Читает текущее состояние и обновляет его")
+Rel(worker, pref, "Получает настройки пользователя")
+Rel(worker, push, "Передает уведомление в push-канал")
+Rel(worker, email, "Передает уведомление в email-канал")
+Rel(worker, sms, "Передает уведомление в SMS-канал")
+Rel(push, providers, "Отправляет уведомление")
+Rel(email, providers, "Отправляет уведомление")
+Rel(sms, providers, "Отправляет уведомление")
+Rel(providers, webhook, "Возвращают статус доставки")
+Rel(webhook, db, "Обновляет результат попытки доставки")
+Rel(scanner, db, "Ищет просроченные попытки и переводит их в failover")
+Rel(api, obs, "Передает логи и метрики")
+Rel(worker, obs, "Передает логи и метрики")
+Rel(scanner, obs, "Передает логи и метрики")
+Rel(webhook, obs, "Передает логи и метрики")
+Rel(ops, obs, "Наблюдает за системой")
+@enduml

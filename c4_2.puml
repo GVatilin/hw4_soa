@@ -1,0 +1,51 @@
+@startuml
+!includeurl https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+
+Person(ext, "Внешняя банковская система")
+Person(ops, "Поддержка / SRE")
+System_Ext(providers, "Внешние провайдеры доставки")
+
+System_Boundary(sys, "Подсистема гарантированной доставки (event-driven на Kafka)") {
+  Container(api, "Сервис приема уведомлений", "HTTP / gRPC", "Принимает критичные уведомления")
+  Container(cache, "Кэш идемпотентности", "Redis", "Проверяет повторные запросы")
+  Container(broker, "Шина событий", "Kafka", "Передает команды и события доставки")
+  Container(orchestrator, "Оркестратор доставки", "Consumer / Producer", "Выбирает канал и управляет failover")
+  Container(timeout, "Сервис контроля таймаутов", "Worker", "Отслеживает отсутствие ответа и инициирует failover")
+  Container(pref, "Сервис пользовательских настроек", "Internal Service", "Возвращает предпочтительный канал и доступные контакты")
+  Container(push, "Воркер push", "Consumer", "Обрабатывает отправку push")
+  Container(email, "Воркер email", "Consumer", "Обрабатывает отправку email")
+  Container(sms, "Воркер SMS", "Consumer", "Обрабатывает отправку SMS")
+  Container(webhook, "Сервис приема статусов доставки", "HTTP API", "Принимает ответы провайдеров и публикует их в шину")
+  Container(obs, "Мониторинг и логи", "Observability", "Хранит логи, метрики, историю доставки и итоговые статусы")
+}
+
+Rel(ext, api, "Передает критичное уведомление")
+Rel(api, cache, "Проверяет, не обрабатывалось ли уведомление ранее")
+Rel(api, broker, "Публикует запрос на доставку")
+
+Rel(orchestrator, broker, "Читает события и публикует новые команды")
+Rel(orchestrator, pref, "Получает настройки пользователя")
+Rel(orchestrator, obs, "Передает информацию о ходе доставки и итоговом статусе")
+
+Rel(timeout, broker, "Публикует событие о таймауте")
+Rel(timeout, obs, "Передает информацию о просроченных попытках")
+
+Rel(push, broker, "Читает команды и публикует результаты")
+Rel(email, broker, "Читает команды и публикует результаты")
+Rel(sms, broker, "Читает команды и публикует результаты")
+
+Rel(push, providers, "Отправляет уведомление")
+Rel(email, providers, "Отправляет уведомление")
+Rel(sms, providers, "Отправляет уведомление")
+
+Rel(providers, webhook, "Возвращают статус доставки")
+Rel(webhook, broker, "Публикует событие о результате доставки")
+Rel(webhook, obs, "Передает статус доставки и ошибки")
+
+Rel(api, obs, "Передает логи и метрики")
+Rel(push, obs, "Передает логи и метрики")
+Rel(email, obs, "Передает логи и метрики")
+Rel(sms, obs, "Передает логи и метрики")
+
+Rel(ops, obs, "Просматривает статусы, историю доставки и метрики")
+@enduml

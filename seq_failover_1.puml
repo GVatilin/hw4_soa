@@ -1,0 +1,38 @@
+@startuml
+actor "Внешняя банковская система" as Core
+participant "Сервис приема уведомлений" as API
+database "База данных" as DB
+participant "Воркер оркестрации" as Worker
+participant "Воркер таймаутов" as Scanner
+participant "Адаптер push" as Push
+participant "Адаптер SMS" as SMS
+participant "Внешний провайдер" as Provider
+participant "Сервис приема статуса доставки" as StatusAPI
+
+Core -> API: Передает критичное уведомление
+API -> DB: Сохраняет новое уведомление
+API --> Core: Подтверждает прием
+
+Worker -> DB: Забирает уведомление в работу
+Worker -> Push: Передает уведомление в основной канал
+Push -> Provider: Отправляет уведомление
+Provider --> Push: Подтверждает прием
+Push --> Worker: Возвращает результат попытки
+Worker -> DB: Сохраняет, что уведомление отправлено и ожидает подтверждения
+
+... проходит время, подтверждение доставки не приходит ...
+
+Scanner -> DB: Находит просроченную попытку
+Scanner -> DB: Помечает попытку как неуспешную
+Scanner -> DB: Переводит уведомление в состояние failover
+
+Worker -> DB: Забирает уведомление в состоянии failover
+Worker -> SMS: Передает уведомление в резервный канал
+SMS -> Provider: Отправляет уведомление
+Provider --> SMS: Подтверждает прием
+SMS --> Worker: Возвращает результат попытки
+Worker -> DB: Сохраняет новую попытку доставки
+
+Provider -> StatusAPI: Передает статус доставки
+StatusAPI -> DB: Обновляет итоговый статус уведомления
+@enduml

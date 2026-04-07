@@ -1,0 +1,43 @@
+@startuml
+actor "Внешняя банковская система" as Core
+participant "Сервис приема уведомлений" as API
+participant "Шина событий" as Kafka
+participant "Оркестратор доставки" as Orchestrator
+participant "Сервис пользовательских настроек" as Pref
+participant "Сервис контроля таймаутов" as Timeout
+participant "Воркер push" as Push
+participant "Воркер SMS" as SMS
+participant "Внешний провайдер" as Provider
+participant "Сервис приема статусов доставки" as Webhook
+
+Core -> API: Передает критичное уведомление
+API -> Kafka: Публикует событие о новом уведомлении
+API --> Core: Подтверждает прием уведомления
+
+Kafka -> Orchestrator: Передает событие о новом уведомлении
+Orchestrator -> Pref: Получает настройки пользователя и порядок каналов
+Pref --> Orchestrator: Возвращает основной и резервный канал
+Orchestrator -> Kafka: Публикует команду на отправку в основной канал
+
+Kafka -> Push: Передает команду на отправку
+Push -> Provider: Отправляет уведомление
+Provider --> Push: Подтверждает прием уведомления
+Push -> Kafka: Публикует результат попытки отправки
+
+... проходит время, статус доставки не приходит ...
+
+Timeout -> Kafka: Публикует событие о таймауте
+
+Kafka -> Orchestrator: Передает событие о таймауте
+Orchestrator -> Kafka: Публикует команду на отправку в резервный канал
+
+Kafka -> SMS: Передает команду на отправку
+SMS -> Provider: Отправляет уведомление
+Provider --> SMS: Подтверждает прием уведомления
+SMS -> Kafka: Публикует результат попытки отправки
+
+Provider -> Webhook: Передает статус успешной доставки
+Webhook -> Kafka: Публикует событие о доставке
+
+Kafka -> Orchestrator: Передает событие о доставке
+@enduml

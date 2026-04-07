@@ -1,0 +1,32 @@
+@startuml
+actor "Внешняя банковская система" as Core
+participant "Сервис приема уведомлений" as API
+participant "Кэш идемпотентности" as Cache
+participant "Шина событий" as Kafka
+participant "Оркестратор доставки" as Orchestrator
+participant "Сервис пользовательских настроек" as Pref
+participant "Воркер push" as Push
+participant "Внешний push-провайдер" as Provider
+participant "Сервис приема статусов доставки" as Webhook
+
+Core -> API: Передает критичное уведомление
+API -> Cache: Проверяет, не является ли запрос повторным
+Cache --> API: Подтверждает, что уведомление новое
+API -> Kafka: Публикует событие о новом уведомлении
+API --> Core: Подтверждает прием уведомления
+
+Kafka -> Orchestrator: Передает событие о новом уведомлении
+Orchestrator -> Pref: Получает настройки пользователя
+Pref --> Orchestrator: Возвращает предпочтительный канал
+Orchestrator -> Kafka: Публикует команду на отправку в основной канал
+
+Kafka -> Push: Передает команду на отправку
+Push -> Provider: Отправляет уведомление
+Provider --> Push: Подтверждает прием уведомления
+Push -> Kafka: Публикует результат попытки отправки
+
+Provider -> Webhook: Передает статус успешной доставки
+Webhook -> Kafka: Публикует событие о доставке
+
+Kafka -> Orchestrator: Передает событие о доставке
+@enduml
